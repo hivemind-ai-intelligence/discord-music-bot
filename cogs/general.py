@@ -23,6 +23,8 @@ class General(commands.Cog):
     def uptime(self) -> datetime.timedelta:
         return datetime.datetime.now(datetime.timezone.utc) - self.start_time
 
+    # ── /ping ────────────────────────────────────────────────────
+
     @commands.hybrid_command(name="ping", description="Check bot latency")
     @commands.cooldown(rate=5, per=10, type=commands.BucketType.user)
     async def ping(self, ctx: commands.Context):
@@ -39,6 +41,8 @@ class General(commands.Cog):
         embed.add_field(name="WebSocket", value=f"`{ws_latency}ms`", inline=True)
 
         await msg.edit(content=None, embed=embed)
+
+    # ── /stats ───────────────────────────────────────────────────
 
     @commands.hybrid_command(name="stats", description="Bot statistics")
     @commands.cooldown(rate=3, per=10, type=commands.BucketType.user)
@@ -58,13 +62,15 @@ class General(commands.Cog):
         embed.add_field(name="Channels", value=f"`{total_channels}`", inline=True)
 
         embed.add_field(name="Python", value=f"`{platform.python_version()}`", inline=True)
-        embed.add_field(name="discord.py", value=f"`{discord.__version__}}`", inline=True)
+        embed.add_field(name="discord.py", value=f"`{discord.__version__}`", inline=True)
         embed.add_field(name="Uptime", value=f"`{format_duration(int(self.uptime.total_seconds() * 1000))}`", inline=True)
 
         embed.set_thumbnail(url=self.bot.user.display_avatar.url if self.bot.user.display_avatar else None)
         embed.set_footer(text=f"Shard: {ctx.guild.shard_id if hasattr(ctx.guild, 'shard_id') else 'N/A'}")
 
         await ctx.reply(embed=embed)
+
+    # ── /invite ──────────────────────────────────────────────────
 
     @commands.hybrid_command(name="invite", description="Get bot invite link")
     @commands.cooldown(rate=3, per=10, type=commands.BucketType.user)
@@ -103,8 +109,10 @@ class General(commands.Cog):
             inline=False,
         )
 
-        embed.set_footer(text="Thank you for using the bot! ❄️")
+        embed.set_footer(text="Thank you for using the bot! ❤️")
         await ctx.reply(embed=embed)
+
+    # ── /help ────────────────────────────────────────────────────
 
     @commands.hybrid_command(name="help", description="Show help menu")
     @commands.cooldown(rate=3, per=10, type=commands.BucketType.user)
@@ -114,7 +122,7 @@ class General(commands.Cog):
             "music": {
                 "emoji": Emojis.MUSIC,
                 "commands": [
-                    "`/play` — Play a song", `/pause` — Pause", "`/resume` — Resume",
+                    "`/play` — Play a song", "`/pause` — Pause", "`/resume` — Resume",
                     "`/skip` — Skip", "`/stop` — Stop & disconnect",
                     "`/loop` — Toggle loop", "`/queue` — View queue",
                     "`/shuffle` — Shuffle queue", "`/remove` — Remove track",
@@ -131,7 +139,7 @@ class General(commands.Cog):
             "namestyle": {
                 "emoji": Emojis.FONT,
                 "commands": [
-                    "`/namestyle set` — Setup style", `/namestyle reset` — Reset style",
+                    "`/namestyle set` — Setup style", "`/namestyle reset` — Reset style",
                     "`/namestyle list` — Fonts & effects", "`/namestyle presets` — Presets",
                     "`/namestyle preview` — Preview preset", "`/namestyle current` — Current style",
                     "`/namestyle info` — Rules & limits",
@@ -193,6 +201,8 @@ class General(commands.Cog):
         embed.set_footer(text=f"Total: 48 commands • Prefix: m!")
         await ctx.reply(embed=embed)
 
+    # ── /info ────────────────────────────────────────────────────
+
     @commands.hybrid_command(name="info", description="Bot information")
     @commands.cooldown(rate=3, per=10, type=commands.BucketType.user)
     async def info(self, ctx: commands.Context):
@@ -216,6 +226,8 @@ class General(commands.Cog):
 
         embed.set_thumbnail(url=self.bot.user.display_avatar.url if self.bot.user.display_avatar else None)
         await ctx.reply(embed=embed)
+
+    # ── /uptime ──────────────────────────────────────────────────
 
     @commands.hybrid_command(name="uptime", description="Show bot uptime")
     @commands.cooldown(rate=3, per=10, type=commands.BucketType.user)
@@ -241,6 +253,8 @@ class General(commands.Cog):
         embed.add_field(name="Started At", value=f"<t:{int(self.start_time.timestamp())}:F>", inline=True)
 
         await ctx.reply(embed=embed)
+
+    # ── /vote ────────────────────────────────────────────────────
 
     @commands.hybrid_command(name="vote", description="Vote for the bot")
     @commands.cooldown(rate=2, per=30, type=commands.BucketType.user)
