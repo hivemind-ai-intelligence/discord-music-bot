@@ -1,0 +1,18 @@
+# Discord Music Bot Dependencies
+# Python 3.10+ required
+
+# Core Discord Library
+discord.py>=2.3.0,<3.0.0
+
+# Lavalink Music Client
+wavelink>=3.3.0,<4.0.0
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# HTTP Client (for Name Styles REST API, Memes, Jokes)
+aiohttp>=3.9.0
+
+# Optional: Better performance
+# uvloop>=0.19.0  # Uncomment for Linux
+# orjson>=3.9.0   # Uncomment for faster JSON
