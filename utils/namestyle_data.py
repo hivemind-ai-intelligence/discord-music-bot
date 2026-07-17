@@ -4,6 +4,7 @@ Adapted from Bot-NameStyles-main by itsfizys.
 Uses Discord REST API PATCH /guilds/{guild_id}/members/@me
 """
 
+import re
 import aiohttp
 from typing import List, Optional, Dict, Any, Tuple
 
@@ -76,8 +77,7 @@ def is_valid_hex(hex_color: str) -> bool:
     return bool(re.match(r"^#?[0-9a-fA-F]{6}$", hex_color.strip()))
 
 
-# Regex imported at top is needed here, add import
-import re
+
 
 
 def is_valid_color_int(value: int) -> bool:
