@@ -59,6 +59,37 @@ class EffectSelect(discord.ui.Select):
         await self.view._update_message(interaction)
 
 
+class ColorInputModal(discord.ui.Modal):
+    """Modal for inputting a hex color."""
+    def __init__(self, view: "NameStyleSetupView", color_num: int):
+        super().__init__(title=f"🎨 Set Color {color_num}")
+        self.view = view
+        self.color_num = color_num
+        self.color_input = discord.ui.TextInput(
+            label=f"Color {color_num} — Hex Code",
+            placeholder="e.g. #FF0000 or FF0000",
+            max_length=7,
+            required=True,
+        )
+        self.add_item(self.color_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        from utils.namestyle_data import is_valid_hex
+        value = self.color_input.value.strip().replace("#", "")
+        if not is_valid_hex(value):
+            await interaction.response.send_message(
+                f"Invalid hex! Use format: `FF0000` or `#FF0000`",
+                ephemeral=True,
+            )
+            return
+        if self.color_num == 1:
+            self.view.color1 = value
+        else:
+            self.view.color2 = value
+        await interaction.response.defer()
+        await self.view._update_message(interaction)
+
+
 class NameStyleSetupView(discord.ui.View):
     """Interactive view for setting up name styles."""
     def __init__(self, cog, ctx: commands.Context):
@@ -81,7 +112,7 @@ class NameStyleSetupView(discord.ui.View):
 
     def _build_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title=f"{Emojis.FONT} Name Style Setup",
+            title=f"Name Style Setup",
             color=0x5865F2,
         )
         embed.add_field(
@@ -96,21 +127,36 @@ class NameStyleSetupView(discord.ui.View):
         )
         embed.add_field(
             name="Color 1",
-            value=f"`{self.color1}`" if self.color1 else "Not set — use /namestyle set",
+            value=f"`#{self.color1}`" if self.color1 else "Not set — click 🎨 Color 1 below",
             inline=True,
         )
         embed.add_field(
             name="Color 2",
-            value=f"`{self.color2}`" if self.color2 else "Optional",
+            value=f"`#{self.color2}`" if self.color2 else "Optional — needed for Gradient",
             inline=True,
+        )
+        embed.add_field(
+            name="Gradient",
+            value="Select **Effect 2 (Gradient)** + set **both colors** for smooth blend!",
+            inline=False,
         )
         return embed
 
-    @discord.ui.button(label="Apply", style=discord.ButtonStyle.success, row=2)
+    @discord.ui.button(label="🎨 Color 1", style=discord.ButtonStyle.secondary, row=2)
+    async def btn_color1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = ColorInputModal(self, 1)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="🎨 Color 2", style=discord.ButtonStyle.secondary, row=2)
+    async def btn_color2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = ColorInputModal(self, 2)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="✅ Apply", style=discord.ButtonStyle.success, row=3)
     async def btn_apply(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.selected_font or not self.selected_effect:
             await interaction.response.send_message(
-                f"{Emojis.ERROR} Select a font and effect first!", ephemeral=True
+                f"Select a font and effect first!", ephemeral=True
             )
             return
 
@@ -128,7 +174,7 @@ class NameStyleSetupView(discord.ui.View):
         # Validate
         error = validate_name_style(self.selected_font, self.selected_effect, colors)
         if error:
-            await interaction.followup.send(f"{Emojis.ERROR} {error}", ephemeral=True)
+            await interaction.followup.send(f"{error}", ephemeral=True)
             return
 
         # Apply via REST API
@@ -145,27 +191,27 @@ class NameStyleSetupView(discord.ui.View):
                 "colors": colors,
             })
             await interaction.followup.send(
-                f"{Emojis.SUCCESS} **Name style applied!** "
+                f"**Name style applied!** "
                 f"Font: {FONTS[self.selected_font]['name']}, Effect: {EFFECTS[self.selected_effect]['name']}",
                 ephemeral=True,
             )
         elif status == 403:
             await interaction.followup.send(
-                f"{Emojis.ERROR} Missing **Change Nickname** permission! Grant it and try again.",
+                f"Missing **Change Nickname** permission! Grant it and try again.",
                 ephemeral=True,
             )
         elif status == 429:
             await interaction.followup.send(
-                f"{Emojis.WARNING} Rate limited. Wait a moment and try again.",
+                f"Rate limited. Wait a moment and try again.",
                 ephemeral=True,
             )
         else:
             await interaction.followup.send(
-                f"{Emojis.ERROR} API Error ({status}): {truncate(text, 200)}",
+                f"API Error ({status}): {truncate(text, 200)}",
                 ephemeral=True,
             )
 
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary, row=3)
     async def btn_cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         for child in self.children:
@@ -194,7 +240,7 @@ class NameStyle(commands.Cog):
     async def namestyle(self, ctx: commands.Context):
         """Name style group command — shows available subcommands."""
         embed = discord.Embed(
-            title=f"{Emojis.FONT} Name Style Commands",
+            title=f"Name Style Commands",
             description="Customize the bot's display name with fonts, effects, and colors!",
             color=0x5865F2,
         )
@@ -217,7 +263,7 @@ class NameStyle(commands.Cog):
     async def namestyle_set(self, ctx: commands.Context):
         """Interactive name style setup."""
         if not ctx.author.guild_permissions.manage_guild:
-            await ctx.reply(f"{Emojis.ERROR} You need **Manage Server** permission.", delete_after=10, ephemeral=True)
+            await ctx.reply(f"You need **Manage Server** permission.", delete_after=10, ephemeral=True)
             return
 
         view = NameStyleSetupView(self, ctx)
@@ -230,7 +276,7 @@ class NameStyle(commands.Cog):
     async def namestyle_reset(self, ctx: commands.Context):
         """Reset name style to default."""
         if not ctx.author.guild_permissions.manage_guild:
-            await ctx.reply(f"{Emojis.ERROR} You need **Manage Server** permission.", delete_after=10, ephemeral=True)
+            await ctx.reply(f"You need **Manage Server** permission.", delete_after=10, ephemeral=True)
             return
 
         token = self.bot.http.token
@@ -238,16 +284,16 @@ class NameStyle(commands.Cog):
 
         if status == 200:
             clear_namestyle_settings(ctx.guild.id)
-            await ctx.reply(f"{Emojis.SUCCESS} **Name style reset to default!**")
+            await ctx.reply(f"**Name style reset to default!**")
         else:
-            await ctx.reply(f"{Emojis.ERROR} API Error ({status}): {truncate(text, 200)}", delete_after=10)
+            await ctx.reply(f"API Error ({status}): {truncate(text, 200)}", delete_after=10)
 
     @namestyle.command(name="list", description="List all available fonts and effects")
     @commands.cooldown(rate=3, per=10, type=commands.BucketType.user)
     async def namestyle_list(self, ctx: commands.Context):
         """List all available fonts and effects."""
         embed = discord.Embed(
-            title=f"{Emojis.FONT} Available Fonts & Effects",
+            title=f"Available Fonts & Effects",
             color=0x5865F2,
         )
 
@@ -272,7 +318,7 @@ class NameStyle(commands.Cog):
     async def namestyle_presets(self, ctx: commands.Context):
         """Show all preset styles."""
         embed = discord.Embed(
-            title=f"{Emojis.SPARKLES} Preset Name Styles",
+            title=f"Preset Name Styles",
             description="Ready-to-use styles — use `/namestyle set` to apply one!",
             color=0x5865F2,
         )
@@ -296,7 +342,7 @@ class NameStyle(commands.Cog):
         if preset not in PRESETS:
             available = ", ".join(f"`{k}`" for k in PRESETS.keys())
             await ctx.reply(
-                f"{Emojis.ERROR} Unknown preset. Available: {available}",
+                f"Unknown preset. Available: {available}",
                 delete_after=10,
             )
             return
@@ -307,7 +353,7 @@ class NameStyle(commands.Cog):
         colors_display = ", ".join([f"`{int_to_hex(c)}`" for c in data['colors']])
 
         embed = discord.Embed(
-            title=f"{Emojis.SPARKLES} Preview: {preset}",
+            title=f"Preview: {preset}",
             description=f"**Font:** {font_name} (ID: {data['font_id']})\n"
                         f"**Effect:** {effect_name} (ID: {data['effect_id']})\n"
                         f"**Colors:** {colors_display}",
@@ -324,7 +370,7 @@ class NameStyle(commands.Cog):
         style = get_namestyle_settings(ctx.guild.id)
 
         if not style:
-            await ctx.reply(f"{Emojis.INFO} No custom name style is set for this server.")
+            await ctx.reply(f"No custom name style is set for this server.")
             return
 
         font_name = FONTS.get(style['font_id'], {}).get('name', 'Unknown')
@@ -332,7 +378,7 @@ class NameStyle(commands.Cog):
         colors_display = ", ".join([f"`{int_to_hex(c)}`" for c in style['colors']])
 
         embed = discord.Embed(
-            title=f"{Emojis.FONT} Current Name Style",
+            title=f"Current Name Style",
             description=f"**Font:** {font_name} (`{style['font_id']}`)\n"
                         f"**Effect:** {effect_name} (`{style['effect_id']}`)\n"
                         f"**Colors:** {colors_display}",
@@ -347,7 +393,7 @@ class NameStyle(commands.Cog):
     async def namestyle_info(self, ctx: commands.Context):
         """Show name style information and limits."""
         embed = discord.Embed(
-            title=f"{Emojis.INFO} Name Style Information",
+            title=f"Name Style Information",
             description="Name Styles let you customize the bot's display name with fonts, effects, and colors — visible in the member list and chat.",
             color=0xFEE75C,
         )

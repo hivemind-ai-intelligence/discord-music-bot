@@ -25,6 +25,94 @@ from utils.db import get_music_settings, update_music_setting
 
 # ── Music Controller View ───────────────────────────────────────────
 
+
+class VolumeModal(discord.ui.Modal):
+    """Modal for setting precise volume."""
+
+    def __init__(self, cog: "Music", guild_id: int, current_vol: int):
+        super().__init__(title="Volume Control")
+        self.cog = cog
+        self.guild_id = guild_id
+        self.vol_input = discord.ui.TextInput(
+            label="Volume (0-100)",
+            placeholder=str(current_vol),
+            default=str(current_vol),
+            max_length=3,
+            required=True,
+        )
+        self.add_item(self.vol_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vol = int(self.vol_input.value)
+            if vol < 0 or vol > 100:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message("Volume must be 0-100.", ephemeral=True)
+            return
+
+        player: wavelink.Player = interaction.guild.voice_client
+        if player and isinstance(player, wavelink.Player):
+            await player.set_volume(vol)
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send(f"Volume: {vol}%", ephemeral=True)
+            await self.cog.update_controller(interaction.guild)
+        else:
+            await interaction.response.send_message("No active player.", ephemeral=True)
+
+
+class SeekModal(discord.ui.Modal):
+    """Modal for seeking to a position."""
+
+    def __init__(self, cog: "Music", guild_id: int, duration: int):
+        super().__init__(title="Seek Position")
+        self.cog = cog
+        self.guild_id = guild_id
+        total_sec = duration // 1000 if duration else 0
+        mins = total_sec // 60
+        secs = total_sec % 60
+        self.seek_input = discord.ui.TextInput(
+            label=f"Seconds (0-{total_sec}) or mm:ss",
+            placeholder="e.g. 90 or 1:30",
+            max_length=6,
+            required=True,
+        )
+        self.add_item(self.seek_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        from utils.helpers import safe_int
+        raw = self.seek_input.value.strip()
+
+        # Parse mm:ss or plain seconds
+        if ":" in raw:
+            parts = raw.split(":")
+            try:
+                secs = int(parts[0]) * 60 + int(parts[1])
+            except ValueError:
+                await interaction.response.send_message("Invalid format. Use seconds or mm:ss.", ephemeral=True)
+                return
+        else:
+            secs = safe_int(raw)
+            if secs is None:
+                await interaction.response.send_message("Enter a valid number.", ephemeral=True)
+                return
+
+        player: wavelink.Player = interaction.guild.voice_client
+        if not player or not isinstance(player, wavelink.Player):
+            await interaction.response.send_message("No active player.", ephemeral=True)
+            return
+
+        dur = (player.current.length or 1) // 1000
+        if secs < 0 or secs > dur:
+            await interaction.response.send_message(f"Must be 0-{dur} seconds.", ephemeral=True)
+            return
+
+        await player.seek(secs * 1000)
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(f"Seeked to {secs}s", ephemeral=True)
+        await self.cog.update_controller(interaction.guild)
+
+
 class MusicControllerView(discord.ui.View):
     """Interactive music controller with buttons."""
 
@@ -39,20 +127,20 @@ class MusicControllerView(discord.ui.View):
 
         if not player or not isinstance(player, wavelink.Player):
             await interaction.response.send_message(
-                f"{Emojis.ERROR} Player is not active.", ephemeral=True, delete_after=6
+                f"Player is not active.", ephemeral=True, delete_after=6
             )
             return None
 
         if not interaction.user.voice:
             await interaction.response.send_message(
-                f"{Emojis.ERROR} Join a voice channel first.",
+                f"Join a voice channel first.",
                 ephemeral=True, delete_after=6,
             )
             return None
 
         if player.channel and interaction.user.voice.channel != player.channel:
             await interaction.response.send_message(
-                f"{Emojis.ERROR} You must be in the same voice channel.",
+                f"You must be in the same voice channel.",
                 ephemeral=True, delete_after=6,
             )
             return None
@@ -61,7 +149,7 @@ class MusicControllerView(discord.ui.View):
 
     # ── Buttons ─────────────────────────────────────────────────
 
-    @discord.ui.button(emoji="⏯️", style=discord.ButtonStyle.primary, row=0, custom_id="music_pause_resume")
+    @discord.ui.button(label="Pause/Resume", emoji="⏯️", style=discord.ButtonStyle.primary, row=0, custom_id="music_pause_resume")
     async def btn_pause_resume(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = await self._validate(interaction)
         if not player:
@@ -70,14 +158,14 @@ class MusicControllerView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         if player.paused:
             await player.pause(False)
-            await interaction.followup.send(f"{Emojis.PLAYING} Resumed!", ephemeral=True)
+            await interaction.followup.send(f"Resumed!", ephemeral=True)
         else:
             await player.pause(True)
-            await interaction.followup.send(f"{Emojis.PAUSED} Paused!", ephemeral=True)
+            await interaction.followup.send(f"Paused!", ephemeral=True)
 
         await self.cog.update_controller(interaction.guild)
 
-    @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary, row=0, custom_id="music_skip")
+    @discord.ui.button(label="Skip", emoji="⏭️", style=discord.ButtonStyle.secondary, row=0, custom_id="music_skip")
     async def btn_skip(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = await self._validate(interaction)
         if not player:
@@ -87,13 +175,13 @@ class MusicControllerView(discord.ui.View):
 
         if player.queue or player.autoplay != wavelink.AutoPlayMode.disabled:
             await player.skip(force=True)
-            await interaction.followup.send(f"{Emojis.SKIP} Skipped!", ephemeral=True)
+            await interaction.followup.send(f"Skipped!", ephemeral=True)
         else:
             await interaction.followup.send(
-                f"{Emojis.WARNING} Nothing left in queue.", ephemeral=True
+                f"Nothing left in queue.", ephemeral=True
             )
 
-    @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger, row=0, custom_id="music_stop")
+    @discord.ui.button(label="Stop", emoji="⏹️", style=discord.ButtonStyle.danger, row=0, custom_id="music_stop")
     async def btn_stop(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = await self._validate(interaction)
         if not player:
@@ -104,9 +192,9 @@ class MusicControllerView(discord.ui.View):
         await player.stop()
         await player.disconnect()
         await self.cog.update_controller(interaction.guild, idle=True)
-        await interaction.followup.send(f"{Emojis.STOP} Stopped & disconnected.", ephemeral=True)
+        await interaction.followup.send(f"Stopped & disconnected.", ephemeral=True)
 
-    @discord.ui.button(emoji="🔁", style=discord.ButtonStyle.secondary, row=1, custom_id="music_loop")
+    @discord.ui.button(label="Loop", emoji="🔁", style=discord.ButtonStyle.secondary, row=1, custom_id="music_loop")
     async def btn_loop(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = await self._validate(interaction)
         if not player:
@@ -116,14 +204,14 @@ class MusicControllerView(discord.ui.View):
 
         if player.queue.mode == wavelink.QueueMode.loop:
             player.queue.mode = wavelink.QueueMode.normal
-            await interaction.followup.send(f"{Emojis.LOOP} Loop disabled.", ephemeral=True)
+            await interaction.followup.send(f"Loop disabled.", ephemeral=True)
         else:
             player.queue.mode = wavelink.QueueMode.loop
-            await interaction.followup.send(f"{Emojis.LOOP} Loop enabled.", ephemeral=True)
+            await interaction.followup.send(f"Loop enabled.", ephemeral=True)
 
         await self.cog.update_controller(interaction.guild)
 
-    @discord.ui.button(emoji="🔀", style=discord.ButtonStyle.secondary, row=1, custom_id="music_shuffle")
+    @discord.ui.button(label="Shuffle", emoji="🔀", style=discord.ButtonStyle.secondary, row=1, custom_id="music_shuffle")
     async def btn_shuffle(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = await self._validate(interaction)
         if not player:
@@ -138,12 +226,12 @@ class MusicControllerView(discord.ui.View):
             player.queue.clear()
             for item in items:
                 await player.queue.put_wait(item)
-            await interaction.followup.send(f"{Emojis.SHUFFLE} Queue shuffled!", ephemeral=True)
+            await interaction.followup.send(f"Queue shuffled!", ephemeral=True)
             await self.cog.update_controller(interaction.guild)
         else:
-            await interaction.followup.send(f"{Emojis.WARNING} Queue is empty.", ephemeral=True)
+            await interaction.followup.send(f"Queue is empty.", ephemeral=True)
 
-    @discord.ui.button(emoji="🤖", style=discord.ButtonStyle.secondary, row=1, custom_id="music_autoplay")
+    @discord.ui.button(label="Autoplay", emoji="♾️", style=discord.ButtonStyle.secondary, row=1, custom_id="music_autoplay")
     async def btn_autoplay(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = await self._validate(interaction)
         if not player:
@@ -153,12 +241,62 @@ class MusicControllerView(discord.ui.View):
 
         if player.autoplay == wavelink.AutoPlayMode.disabled:
             player.autoplay = wavelink.AutoPlayMode.enabled
-            await interaction.followup.send(f"{Emojis.AUTOPLAY} Autoplay enabled.", ephemeral=True)
+            await interaction.followup.send(f"Autoplay enabled.", ephemeral=True)
         else:
             player.autoplay = wavelink.AutoPlayMode.disabled
-            await interaction.followup.send(f"{Emojis.AUTOPLAY} Autoplay disabled.", ephemeral=True)
+            await interaction.followup.send(f"Autoplay disabled.", ephemeral=True)
 
         await self.cog.update_controller(interaction.guild)
+
+    @discord.ui.button(label="Vol+10", emoji="🔊", style=discord.ButtonStyle.secondary, row=2, custom_id="music_vol_up")
+    async def btn_vol_up(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = await self._validate(interaction)
+        if not player:
+            return
+        new_vol = min(player.volume + 10, 100)
+        await player.set_volume(new_vol)
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(f"Volume: {new_vol}%", ephemeral=True)
+        await self.cog.update_controller(interaction.guild)
+
+    @discord.ui.button(label="Vol-10", emoji="🔉", style=discord.ButtonStyle.secondary, row=2, custom_id="music_vol_down")
+    async def btn_vol_down(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = await self._validate(interaction)
+        if not player:
+            return
+        new_vol = max(player.volume - 10, 0)
+        await player.set_volume(new_vol)
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(f"Volume: {new_vol}%", ephemeral=True)
+        await self.cog.update_controller(interaction.guild)
+
+    @discord.ui.button(label="Vol Set", emoji="🎚️", style=discord.ButtonStyle.secondary, row=2, custom_id="music_vol_modal")
+    async def btn_vol_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = await self._validate(interaction)
+        if not player:
+            return
+        await interaction.response.send_modal(VolumeModal(self.cog, self.guild_id, player.volume))
+
+    @discord.ui.button(label="Seek", emoji="⏩", style=discord.ButtonStyle.secondary, row=2, custom_id="music_seek")
+    async def btn_seek(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = await self._validate(interaction)
+        if not player:
+            return
+        dur = player.current.length if player.current else 0
+        await interaction.response.send_modal(SeekModal(self.cog, self.guild_id, dur))
+
+    @discord.ui.button(label="Help", emoji="❓", style=discord.ButtonStyle.secondary, row=3, custom_id="music_help")
+    async def btn_help(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        help_text = (
+            "**Controls**\n"
+            "⏯️ Pause/Resume  •  ⏭️ Skip  •  ⏹️ Stop\n"
+            "🔁 Loop toggle  •  🔀 Shuffle queue  •  ♾️ Autoplay\n"
+            "🔊 Vol+10  •  🔉 Vol-10  •  🎚️ Set exact volume\n"
+            "⏩ Seek position\n\n"
+            "**Commands:** `/play` `/pause` `/skip` `/queue` `/volume` `/seek` `/loop` `/nowplaying`"
+        )
+        await interaction.followup.send(help_text, ephemeral=True)
 
 
 # ── Music Cog ───────────────────────────────────────────────────────
@@ -171,6 +309,7 @@ class Music(commands.Cog):
         self.controller_messages: Dict[int, discord.Message] = {}
         self.play_history: Dict[int, List[wavelink.Playable]] = {}
         self._cooldowns: Dict[int, datetime.datetime] = {}
+        self._requesters: Dict[int, str] = {}
 
     # ── Utility Methods ─────────────────────────────────────────
 
@@ -202,60 +341,75 @@ class Music(commands.Cog):
 
         return "\n".join(lines)
 
-    def build_controller_embed(self, player: Optional[wavelink.Player]) -> discord.Embed:
-        """Build the music controller embed."""
+    def build_controller_embed(self, player: Optional[wavelink.Player], guild_id: Optional[int] = None) -> discord.Embed:
+        """Build embed matching reference style — clean, bullet points, no bar."""
+        GREY = 0x2B2D31
+
         if not player or not player.current:
             embed = discord.Embed(
-                title="🎵 Music Controller",
-                description="**Nothing is playing right now.**\n"
-                            "Use `/play <song>` to start a session!",
-                color=0x2B2D31,
+                title="Music Controller",
+                description="Nothing is playing right now.\nUse `/play <song>` to start a session!",
+                color=GREY,
             )
             return embed
 
         current = player.current
-        status = "⏸️ Paused" if player.paused else "▶️ Playing"
-
-        # Get position safely
-        position = getattr(player, 'position', 0) or 0
         duration = current.length or 1
+        paused = player.paused
 
-        # Build embed
         embed = discord.Embed(
-            title=status,
-            description=f"**[{truncate(current.title, 60)}]({getattr(current, 'uri', '')})**\n"
-                        f"by `{truncate(current.author, 50)}`",
-            color=0x5865F2 if not player.paused else 0xFEE75C,
+            title="Paused" if paused else "Now Playing",
+            color=GREY,
         )
 
-        # Progress bar
-        bar = progress_bar(position, duration, 18)
-        embed.add_field(
-            name="Progress",
-            value=f"`{format_duration(position)}` {bar} `{format_duration(duration)}`",
-            inline=False,
+        # Description: • bullet style matching reference
+        requester = ""
+        if guild_id and guild_id in self._requesters:
+            requester = f" - (@{self._requesters[guild_id]})"
+
+        embed.description = (
+            f"• {truncate(current.title, 50)} - {current.author}\n"
+            f"• Duration: {format_duration(duration)}{requester}"
         )
 
-        # Queue info
-        embed.add_field(
-            name="📋 Queue",
-            value=self._build_queue_preview(player),
-            inline=False,
-        )
+        # Song poster — artwork first, fallback to YT thumbnail
+        artwork_url = getattr(current, 'artwork', None)
+        if artwork_url and str(artwork_url).startswith("http"):
+            embed.set_thumbnail(url=str(artwork_url))
+        elif hasattr(current, 'identifier') and current.identifier:
+            ytid = str(current.identifier)
+            if ytid:
+                embed.set_thumbnail(url=f"https://img.youtube.com/vi/{ytid}/mqdefault.jpg")
 
-        # Stats row
-        loop_status = "On" if player.queue.mode == wavelink.QueueMode.loop else "Off"
-        autoplay_status = "On" if player.autoplay != wavelink.AutoPlayMode.disabled else "Off"
+        # Stats — inline, no emojis
+        queue_count = len(player.queue)
+        loop_on = player.queue.mode == wavelink.QueueMode.loop
+        ap_on = player.autoplay != wavelink.AutoPlayMode.disabled
 
-        embed.add_field(name="🔁 Loop", value=loop_status, inline=True)
-        embed.add_field(name="🤖 Autoplay", value=autoplay_status, inline=True)
-        embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+        embed.add_field(name="Queue", value=f"`{queue_count}`", inline=True)
+        embed.add_field(name="Volume", value=f"`{player.volume}%`", inline=True)
+        embed.add_field(name="Loop", value="On" if loop_on else "Off", inline=True)
+        embed.add_field(name="Auto", value="On" if ap_on else "Off", inline=True)
 
-        # Album art as thumbnail
-        if hasattr(current, 'artwork') and current.artwork:
-            embed.set_thumbnail(url=current.artwork)
+        # Queue preview
+        queue_items = list(player.queue)
+        if queue_items:
+            lines = []
+            for i, t in enumerate(queue_items[:3], 1):
+                lines.append(f"`{i}.` {truncate(t.title, 34)}  `{format_duration(t.length)}`")
+            if len(queue_items) > 3:
+                lines.append(f"... +{len(queue_items) - 3} more")
+            embed.add_field(name="Up Next", value="\n".join(lines), inline=False)
+        else:
+            embed.add_field(name="Up Next", value="Queue is empty", inline=False)
 
-        embed.set_footer(text="Use buttons below to control playback")
+        # Footer — clean, no emojis
+        now = datetime.datetime.utcnow().strftime("%H:%M")
+        footer = f"{format_duration(duration)}  •  {now}"
+        if guild_id and guild_id in self._requesters:
+            footer += f"  •  {self._requesters[guild_id]}"
+        embed.set_footer(text=footer)
+
         return embed
 
     async def update_controller(
@@ -273,7 +427,7 @@ class Music(commands.Cog):
             for child in view.children:
                 if isinstance(child, discord.ui.Button):
                     child.disabled = True
-            embed = self.build_controller_embed(None)
+            embed = self.build_controller_embed(None, guild.id)
 
             existing = self.controller_messages.get(guild.id)
             if existing:
@@ -288,7 +442,7 @@ class Music(commands.Cog):
 
         # Active player
         view = MusicControllerView(self, guild.id)
-        embed = self.build_controller_embed(player)
+        embed = self.build_controller_embed(player, guild.id)
 
         existing = self.controller_messages.get(guild.id)
         if existing:
@@ -310,11 +464,11 @@ class Music(commands.Cog):
         """Connect to VC and return player, handling all edge cases."""
         # Check user voice
         if not ctx.author.voice:
-            await ctx.reply(f"{Emojis.ERROR} Join a voice channel first!", delete_after=10)
+            await ctx.reply(f"Join a voice channel first!", delete_after=10)
             return None
 
         if not ctx.author.voice.channel:
-            await ctx.reply(f"{Emojis.ERROR} Cannot determine your voice channel.", delete_after=10)
+            await ctx.reply(f"Cannot determine your voice channel.", delete_after=10)
             return None
 
         destination = ctx.author.voice.channel
@@ -329,18 +483,18 @@ class Music(commands.Cog):
                 return player
             except asyncio.TimeoutError:
                 await ctx.reply(
-                    f"{Emojis.ERROR} Connection timed out. Try changing the VC region.",
+                    f"Connection timed out. Try changing the VC region.",
                     delete_after=10,
                 )
                 return None
             except Exception as e:
-                await ctx.reply(f"{Emojis.ERROR} Failed to connect: {e}", delete_after=10)
+                await ctx.reply(f"Failed to connect: {e}", delete_after=10)
                 return None
         else:
             player: wavelink.Player = ctx.guild.voice_client
 
             if not isinstance(player, wavelink.Player):
-                await ctx.reply(f"{Emojis.ERROR} Player type mismatch.", delete_after=10)
+                await ctx.reply(f"Player type mismatch.", delete_after=10)
                 return None
 
             # If in different VC
@@ -349,7 +503,7 @@ class Music(commands.Cog):
                     await player.move_to(destination)
                 else:
                     await ctx.reply(
-                        f"{Emojis.ERROR} Bot is already playing in {player.channel.mention}.",
+                        f"Bot is already playing in {player.channel.mention}.",
                         delete_after=10,
                     )
                     return None
@@ -461,18 +615,22 @@ class Music(commands.Cog):
             results = await wavelink.Playable.search(query)
         except Exception as e:
             await ctx.reply(
-                f"{Emojis.ERROR} Search failed: `{e}`", delete_after=10
+                f"Search failed: `{e}`", delete_after=10
             )
             return
 
         if not results:
-            await ctx.reply(f"{Emojis.ERROR} No results found for: `{query}`", delete_after=10)
+            await ctx.reply(f"No results found for: `{query}`", delete_after=10)
             return
 
         track = results[0]
 
         # Play or queue
         if not player.current:
+            # Store requester
+            requester_name = ctx.author.display_name
+            self._requesters[ctx.guild.id] = requester_name
+
             # Get default volume
             music_settings = get_music_settings(ctx.guild.id)
             default_volume = music_settings.get("default_volume", 80)
@@ -480,19 +638,36 @@ class Music(commands.Cog):
             await player.play(track, volume=default_volume)
             await self.update_controller(ctx.guild, channel=ctx.channel)
 
-            await ctx.reply(f"{Emojis.PLAYING} **Now Playing:** `{track.title}` — `{format_duration(track.length)}`")
+            # Play embed — reference bullet style
+            play_embed = discord.Embed(
+                title="Now Playing",
+                description=f"• {truncate(track.title, 50)} - {track.author}\n• Duration: {format_duration(track.length)} - (@{requester_name})",
+                color=0x2B2D31,
+            )
+            if hasattr(track, 'artwork') and track.artwork and str(track.artwork).startswith("http"):
+                play_embed.set_thumbnail(url=str(track.artwork))
+            elif hasattr(track, 'identifier') and track.identifier:
+                play_embed.set_thumbnail(url=f"https://img.youtube.com/vi/{track.identifier}/mqdefault.jpg")
+            await ctx.reply(embed=play_embed)
         else:
             # Queue limit: 50 tracks
             if len(player.queue) >= 50:
-                await ctx.reply(f"{Emojis.ERROR} Queue is full (max 50 tracks).", delete_after=10)
+                await ctx.reply(f"Queue is full (max 50 tracks).", delete_after=10)
                 return
 
             await player.queue.put_wait(track)
             await self.update_controller(ctx.guild)
 
-            await ctx.reply(
-                f"{Emojis.QUEUE} **Added to queue (#{len(player.queue)}):** `{track.title}` — `{format_duration(track.length)}`"
+            queue_embed = discord.Embed(
+                title="Enqueued Track",
+                description=f"Added **{truncate(track.title, 40)}** - **{track.author}** to the queue.\nDuration: {format_duration(track.length)}  •  Requestor: {ctx.author.display_name}  •  Position: {len(player.queue)}",
+                color=0x2B2D31,
             )
+            if hasattr(track, 'artwork') and track.artwork and str(track.artwork).startswith("http"):
+                queue_embed.set_thumbnail(url=str(track.artwork))
+            elif hasattr(track, 'identifier') and track.identifier:
+                queue_embed.set_thumbnail(url=f"https://img.youtube.com/vi/{track.identifier}/mqdefault.jpg")
+            await ctx.reply(embed=queue_embed)
 
     # ── /pause ───────────────────────────────────────────────────
 
@@ -503,16 +678,16 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if player.paused:
-            await ctx.reply(f"{Emojis.WARNING} Already paused.", delete_after=10)
+            await ctx.reply(f"Already paused.", delete_after=10)
             return
 
         await player.pause(True)
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.PAUSED} **Paused** — `/resume` to continue.")
+        await ctx.reply(f"**Paused** — `/resume` to continue.")
 
     # ── /resume ──────────────────────────────────────────────────
 
@@ -523,16 +698,16 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if not player.paused:
-            await ctx.reply(f"{Emojis.WARNING} Not paused.", delete_after=10)
+            await ctx.reply(f"Not paused.", delete_after=10)
             return
 
         await player.pause(False)
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.PLAYING} **Resumed!**")
+        await ctx.reply(f"**Resumed!**")
 
     # ── /skip ────────────────────────────────────────────────────
 
@@ -543,18 +718,18 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if not ctx.author.voice or (player.channel and ctx.author.voice.channel != player.channel):
-            await ctx.reply(f"{Emojis.ERROR} Join the same voice channel first.", delete_after=10)
+            await ctx.reply(f"Join the same voice channel first.", delete_after=10)
             return
 
         if player.queue or player.autoplay != wavelink.AutoPlayMode.disabled:
             await player.skip(force=True)
-            await ctx.reply(f"{Emojis.SKIP} **Skipped!**")
+            await ctx.reply(f"**Skipped!**")
         else:
-            await ctx.reply(f"{Emojis.WARNING} Nothing left to skip to. Use `/stop`.", delete_after=10)
+            await ctx.reply(f"Nothing left to skip to. Use `/stop`.", delete_after=10)
 
     # ── /stop ────────────────────────────────────────────────────
 
@@ -568,16 +743,16 @@ class Music(commands.Cog):
             # Try forceful disconnect
             if ctx.guild.me.voice:
                 await ctx.guild.me.move_to(None)
-                await ctx.reply(f"{Emojis.STOP} Forcefully disconnected.")
+                await ctx.reply(f"Forcefully disconnected.")
             else:
-                await ctx.reply(f"{Emojis.ERROR} Not connected to any VC.", delete_after=10)
+                await ctx.reply(f"Not connected to any VC.", delete_after=10)
             return
 
         player.queue.clear()
         await player.stop()
         await player.disconnect()
         await self.update_controller(ctx.guild, idle=True)
-        await ctx.reply(f"{Emojis.STOP} **Stopped & disconnected.**")
+        await ctx.reply(f"**Stopped & disconnected.**")
 
     # ── /loop ────────────────────────────────────────────────────
 
@@ -588,15 +763,15 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if player.queue.mode == wavelink.QueueMode.loop:
             player.queue.mode = wavelink.QueueMode.normal
-            await ctx.reply(f"{Emojis.LOOP} **Loop Disabled**")
+            await ctx.reply(f"**Loop Disabled**")
         else:
             player.queue.mode = wavelink.QueueMode.loop
-            await ctx.reply(f"{Emojis.LOOP} **Loop Enabled** — queue will repeat.")
+            await ctx.reply(f"**Loop Enabled** — queue will repeat.")
 
         await self.update_controller(ctx.guild)
 
@@ -609,7 +784,7 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player) or not player.current:
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         embed = discord.Embed(
@@ -657,11 +832,11 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if not player.queue:
-            await ctx.reply(f"{Emojis.WARNING} Queue is empty to shuffle.", delete_after=10)
+            await ctx.reply(f"Queue is empty to shuffle.", delete_after=10)
             return
 
         import random
@@ -672,7 +847,7 @@ class Music(commands.Cog):
             await player.queue.put_wait(item)
 
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.SHUFFLE} **Queue shuffled!** ({len(items)} tracks)")
+        await ctx.reply(f"**Queue shuffled!** ({len(items)} tracks)")
 
     # ── /remove ──────────────────────────────────────────────────
 
@@ -683,16 +858,16 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if not player.queue:
-            await ctx.reply(f"{Emojis.ERROR} Queue is empty.", delete_after=10)
+            await ctx.reply(f"Queue is empty.", delete_after=10)
             return
 
         if position < 1 or position > len(player.queue):
             await ctx.reply(
-                f"{Emojis.ERROR} Invalid position. Queue has {len(player.queue)} tracks.",
+                f"Invalid position. Queue has {len(player.queue)} tracks.",
                 delete_after=10,
             )
             return
@@ -705,7 +880,7 @@ class Music(commands.Cog):
         player.queue.delete(position - 1)
 
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.TRASH} **Removed:** `{removed.title}` from queue.")
+        await ctx.reply(f"**Removed:** `{removed.title}` from queue.")
 
     # ── /clearqueue ──────────────────────────────────────────────
 
@@ -716,14 +891,14 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         count = len(player.queue)
         player.queue.clear()
 
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.TRASH} **Cleared {count} tracks** from the queue.")
+        await ctx.reply(f"**Cleared {count} tracks** from the queue.")
 
     # ── /volume ──────────────────────────────────────────────────
 
@@ -734,21 +909,21 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if level is None:
-            await ctx.reply(f"{Emojis.VOLUME} Current volume: **{player.volume}%**")
+            await ctx.reply(f"Current volume: **{player.volume}%**")
             return
 
         if level < 0 or level > 100:
-            await ctx.reply(f"{Emojis.ERROR} Volume must be 0-100.", delete_after=10)
+            await ctx.reply(f"Volume must be 0-100.", delete_after=10)
             return
 
         await player.set_volume(level)
         bar = volume_bar(level)
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.VOLUME} Volume: `{bar}` **{level}%**")
+        await ctx.reply(f"Volume: `{bar}` **{level}%**")
 
     # ── /nowplaying ──────────────────────────────────────────────
 
@@ -759,7 +934,7 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player) or not player.current:
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         current = player.current
@@ -768,23 +943,32 @@ class Music(commands.Cog):
         bar = progress_bar(position, duration, 15)
 
         embed = discord.Embed(
-            title="🎵 Now Playing",
-            description=f"**[{current.title}]({getattr(current, 'uri', '')})**\nby **{current.author}**",
-            color=0x5865F2,
+            color=0xC0392B if not player.paused else 0xD4A017,
+        )
+        uri = getattr(current, 'uri', None)
+        title_text = f"[{truncate(current.title, 55)}]({uri})" if uri else truncate(current.title, 55)
+        embed.description = (
+            f"**{title_text}**\n"
+            f"{current.author}  •  `{format_duration(duration)}`"
         )
 
         embed.add_field(
-            name="Progress",
-            value=f"`{format_duration(position)}` {bar} `{format_duration(duration)}`",
+            name="",
+            value=f"`{format_duration(position)}` │{bar}│ `{format_duration(duration)}`",
             inline=False,
         )
 
-        embed.add_field(name="Volume", value=f"{player.volume}%", inline=True)
+        embed.add_field(name="Volume", value=f"`{player.volume}%`", inline=True)
         embed.add_field(name="Loop", value="On" if player.queue.mode == wavelink.QueueMode.loop else "Off", inline=True)
-        embed.add_field(name="Queue", value=f"{len(player.queue)} tracks", inline=True)
+        embed.add_field(name="Queue", value=f"`{len(player.queue)}` tracks", inline=True)
 
         if hasattr(current, 'artwork') and current.artwork:
             embed.set_thumbnail(url=current.artwork)
+
+        footer_parts = [format_duration(duration), datetime.datetime.utcnow().strftime("%H:%M")]
+        if ctx.guild.id in self._requesters:
+            footer_parts.append(self._requesters[ctx.guild.id])
+        embed.set_footer(text="  •  ".join(footer_parts))
 
         await ctx.reply(embed=embed)
 
@@ -797,21 +981,21 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player) or not player.current:
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if seconds < 0:
-            await ctx.reply(f"{Emojis.ERROR} Seconds must be positive.", delete_after=10)
+            await ctx.reply(f"Seconds must be positive.", delete_after=10)
             return
 
         position_ms = seconds * 1000
         if position_ms > (player.current.length or 0):
-            await ctx.reply(f"{Emojis.ERROR} Cannot seek beyond track length.", delete_after=10)
+            await ctx.reply(f"Cannot seek beyond track length.", delete_after=10)
             return
 
         await player.seek(position_ms)
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.SUCCESS} **Seeked to** `{format_duration(position_ms)}`")
+        await ctx.reply(f"**Seeked to** `{format_duration(position_ms)}`")
 
     # ── /restart ─────────────────────────────────────────────────
 
@@ -822,12 +1006,12 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player) or not player.current:
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         await player.seek(0)
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.SUCCESS} **Restarted!**")
+        await ctx.reply(f"**Restarted!**")
 
     # ── /join ────────────────────────────────────────────────────
 
@@ -836,7 +1020,7 @@ class Music(commands.Cog):
     async def join(self, ctx: commands.Context):
         """Make the bot join your voice channel."""
         if not ctx.author.voice:
-            await ctx.reply(f"{Emojis.ERROR} Join a voice channel first.", delete_after=10)
+            await ctx.reply(f"Join a voice channel first.", delete_after=10)
             return
 
         destination = ctx.author.voice.channel
@@ -844,7 +1028,7 @@ class Music(commands.Cog):
         if ctx.guild.voice_client:
             player: wavelink.Player = ctx.guild.voice_client
             if player.channel and player.channel.id == destination.id:
-                await ctx.reply(f"{Emojis.WARNING} Already in your channel.", delete_after=10)
+                await ctx.reply(f"Already in your channel.", delete_after=10)
                 return
             await player.move_to(destination)
         else:
@@ -855,10 +1039,10 @@ class Music(commands.Cog):
                 player.inactive_timeout = 120
                 player.autoplay = wavelink.AutoPlayMode.disabled
             except Exception as e:
-                await ctx.reply(f"{Emojis.ERROR} Failed to connect: {e}", delete_after=10)
+                await ctx.reply(f"Failed to connect: {e}", delete_after=10)
                 return
 
-        await ctx.reply(f"{Emojis.JOIN} **Joined** {destination.mention}")
+        await ctx.reply(f"**Joined** {destination.mention}")
 
     # ── /leave ───────────────────────────────────────────────────
 
@@ -871,16 +1055,16 @@ class Music(commands.Cog):
         if not player or not isinstance(player, wavelink.Player):
             if ctx.guild.me.voice:
                 await ctx.guild.me.move_to(None)
-                await ctx.reply(f"{Emojis.LEAVE} Disconnected.")
+                await ctx.reply(f"Disconnected.")
             else:
-                await ctx.reply(f"{Emojis.ERROR} Not in a voice channel.", delete_after=10)
+                await ctx.reply(f"Not in a voice channel.", delete_after=10)
             return
 
         player.queue.clear()
         await player.stop()
         await player.disconnect()
         await self.update_controller(ctx.guild, idle=True)
-        await ctx.reply(f"{Emojis.LEAVE} **Disconnected.**")
+        await ctx.reply(f"**Disconnected.**")
 
     # ── /autoplay ────────────────────────────────────────────────
 
@@ -891,15 +1075,15 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if player.autoplay == wavelink.AutoPlayMode.disabled:
             player.autoplay = wavelink.AutoPlayMode.enabled
-            await ctx.reply(f"{Emojis.AUTOPLAY} **Autoplay Enabled** — related tracks will play automatically.")
+            await ctx.reply(f"**Autoplay Enabled** — related tracks will play automatically.")
         else:
             player.autoplay = wavelink.AutoPlayMode.disabled
-            await ctx.reply(f"{Emojis.AUTOPLAY} **Autoplay Disabled**")
+            await ctx.reply(f"**Autoplay Disabled**")
 
         await self.update_controller(ctx.guild)
 
@@ -912,7 +1096,7 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player) or not player.current:
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         current = player.current
@@ -940,7 +1124,7 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         # Check if filters are active
@@ -951,7 +1135,7 @@ class Music(commands.Cog):
             if current_filters and hasattr(current_filters, 'equalizer'):
                 # Remove filters
                 await player.set_filters(filters.Equalizer.flat(), seek=True)
-                await ctx.reply(f"{Emojis.FILTER} **Bass Boost Disabled**")
+                await ctx.reply(f"**Bass Boost Disabled**")
             else:
                 # Apply bass boost
                 eq = filters.Equalizer()
@@ -963,11 +1147,11 @@ class Music(commands.Cog):
                 for band, gain in bands:
                     eq.set_gain(band, gain)
                 await player.set_filters(eq, seek=True)
-                await ctx.reply(f"{Emojis.FILTER} **Bass Boost Enabled** 🎛️")
+                await ctx.reply(f"**Bass Boost Enabled** 🎛️")
         except ImportError:
-            await ctx.reply(f"{Emojis.ERROR} Filter system not available.", delete_after=10)
+            await ctx.reply(f"Filter system not available.", delete_after=10)
         except Exception as e:
-            await ctx.reply(f"{Emojis.ERROR} Filter error: {e}", delete_after=10)
+            await ctx.reply(f"Filter error: {e}", delete_after=10)
 
     # ── /speed ───────────────────────────────────────────────────
 
@@ -978,11 +1162,11 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         if rate < 0.5 or rate > 3.0:
-            await ctx.reply(f"{Emojis.ERROR} Speed must be between 0.5x and 3.0x.", delete_after=10)
+            await ctx.reply(f"Speed must be between 0.5x and 3.0x.", delete_after=10)
             return
 
         try:
@@ -990,11 +1174,11 @@ class Music(commands.Cog):
             timescale = filters.Timescale(speed=rate)
             await player.set_filters(timescale, seek=True)
             label = "Normal" if rate == 1.0 else f"{rate}x"
-            await ctx.reply(f"{Emojis.SPEED} **Speed set to {label}**")
+            await ctx.reply(f"**Speed set to {label}**")
         except ImportError:
-            await ctx.reply(f"{Emojis.ERROR} Filter system not available.", delete_after=10)
+            await ctx.reply(f"Filter system not available.", delete_after=10)
         except Exception as e:
-            await ctx.reply(f"{Emojis.ERROR} Speed error: {e}", delete_after=10)
+            await ctx.reply(f"Speed error: {e}", delete_after=10)
 
     # ── /move ────────────────────────────────────────────────────
 
@@ -1005,19 +1189,19 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         queue_len = len(player.queue)
         if from_pos < 1 or from_pos > queue_len or to_pos < 1 or to_pos > queue_len:
             await ctx.reply(
-                f"{Emojis.ERROR} Positions must be between 1 and {queue_len}.",
+                f"Positions must be between 1 and {queue_len}.",
                 delete_after=10,
             )
             return
 
         if from_pos == to_pos:
-            await ctx.reply(f"{Emojis.WARNING} Same position, nothing moved.", delete_after=10)
+            await ctx.reply(f"Same position, nothing moved.", delete_after=10)
             return
 
         items = list(player.queue)
@@ -1029,7 +1213,7 @@ class Music(commands.Cog):
             await player.queue.put_wait(item)
 
         await self.update_controller(ctx.guild)
-        await ctx.reply(f"{Emojis.SUCCESS} Moved `{track.title}` from #{from_pos} to #{to_pos}.")
+        await ctx.reply(f"Moved `{track.title}` from #{from_pos} to #{to_pos}.")
 
     # ── /save ────────────────────────────────────────────────────
 
@@ -1040,7 +1224,7 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player) or not player.current:
-            await ctx.reply(f"{Emojis.ERROR} Nothing is playing.", delete_after=10)
+            await ctx.reply(f"Nothing is playing.", delete_after=10)
             return
 
         current = player.current
@@ -1059,9 +1243,9 @@ class Music(commands.Cog):
 
         try:
             await ctx.author.send(embed=embed)
-            await ctx.reply(f"{Emojis.SAVE} **Sent to your DMs!** 📨", ephemeral=True)
+            await ctx.reply(f"**Sent to your DMs!** 📨", ephemeral=True)
         except discord.Forbidden:
-            await ctx.reply(f"{Emojis.ERROR} I can't DM you. Enable DMs from server members.", delete_after=10)
+            await ctx.reply(f"I can't DM you. Enable DMs from server members.", delete_after=10)
 
     # ── /history ─────────────────────────────────────────────────
 
@@ -1072,11 +1256,11 @@ class Music(commands.Cog):
         history = self.play_history.get(ctx.guild.id, [])
 
         if not history:
-            await ctx.reply(f"{Emojis.HISTORY} No play history yet.", delete_after=10)
+            await ctx.reply(f"No play history yet.", delete_after=10)
             return
 
         embed = discord.Embed(
-            title=f"{Emojis.HISTORY} Recently Played",
+            title=f"Recently Played",
             color=0x5865F2,
         )
 
@@ -1099,15 +1283,15 @@ class Music(commands.Cog):
         player: wavelink.Player = ctx.guild.voice_client
 
         if not player or not isinstance(player, wavelink.Player):
-            await ctx.reply(f"{Emojis.ERROR} Not connected to a voice channel.", delete_after=10)
+            await ctx.reply(f"Not connected to a voice channel.", delete_after=10)
             return
 
         if player.inactive_timeout == 0:
             player.inactive_timeout = 120
-            await ctx.reply(f"{Emojis.CLOCK} **24/7 mode Disabled** — bot will leave after 2 min of inactivity.")
+            await ctx.reply(f"**24/7 mode Disabled** — bot will leave after 2 min of inactivity.")
         else:
             player.inactive_timeout = 0
-            await ctx.reply(f"{Emojis.CLOCK} **24/7 mode Enabled** — bot will never auto-disconnect.")
+            await ctx.reply(f"**24/7 mode Enabled** — bot will never auto-disconnect.")
 
 
 # ── Setup Function ─────────────────────────────────────────────────

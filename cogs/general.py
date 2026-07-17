@@ -30,13 +30,13 @@ class General(commands.Cog):
     async def ping(self, ctx: commands.Context):
         """Show bot latency and WebSocket ping."""
         start = time.perf_counter()
-        msg = await ctx.reply(f"{Emojis.PING} Pinging...")
+        msg = await ctx.reply(f"Pinging...")
         end = time.perf_counter()
 
         api_latency = round((end - start) * 1000)
         ws_latency = round(self.bot.latency * 1000)
 
-        embed = discord.Embed(title=f"{Emojis.PING} Pong!", color=0x57F287)
+        embed = discord.Embed(title=f"Pong!", color=0x57F287)
         embed.add_field(name="API Latency", value=f"`{api_latency}ms`", inline=True)
         embed.add_field(name="WebSocket", value=f"`{ws_latency}ms`", inline=True)
 
@@ -53,7 +53,7 @@ class General(commands.Cog):
         total_channels = sum(len(g.channels) for g in self.bot.guilds)
 
         embed = discord.Embed(
-            title=f"{Emojis.STATS} Bot Statistics",
+            title=f"Bot Statistics",
             color=0x5865F2,
         )
 
@@ -96,7 +96,7 @@ class General(commands.Cog):
         )
 
         embed = discord.Embed(
-            title=f"{Emojis.INVITE} Invite Me!",
+            title=f"Invite Me!",
             description=f"Click the link below to add me to your server:\n\n"
                         f"**[🔗 Invite Link]({invite_url})**",
             color=0x57F287,
@@ -185,7 +185,7 @@ class General(commands.Cog):
 
         # Full help menu
         embed = discord.Embed(
-            title=f"{Emojis.HELP} Help Menu",
+            title=f"Help Menu",
             description=f"**{self.bot.user.name}** — A powerful Discord Music Bot with custom Name Styles!\n"
                         f"Use `/help <category>` for details on a specific category.",
             color=0x5865F2,
@@ -208,7 +208,7 @@ class General(commands.Cog):
     async def info(self, ctx: commands.Context):
         """Show detailed bot information."""
         embed = discord.Embed(
-            title=f"{Emojis.BOT} About {self.bot.user.name}",
+            title=f"About {self.bot.user.name}",
             description="A feature-rich Discord Music Bot with customizable Name Styles, "
                         "40+ slash commands, and a beautiful music controller.",
             color=0x5865F2,
@@ -245,7 +245,7 @@ class General(commands.Cog):
         parts.append(f"{seconds}s")
 
         embed = discord.Embed(
-            title=f"{Emojis.UPTIME} Uptime",
+            title=f"Uptime",
             description=f"**{' '.join(parts)}**",
             color=0x57F287,
         )
@@ -261,7 +261,7 @@ class General(commands.Cog):
     async def vote(self, ctx: commands.Context):
         """Show vote/support links."""
         embed = discord.Embed(
-            title=f"{Emojis.STAR} Support & Vote",
+            title=f"Support & Vote",
             description="Love the bot? Show your support!",
             color=0xFEE75C,
         )

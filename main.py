@@ -133,15 +133,21 @@ class MusicBot(commands.Bot):
             )
             return
         if isinstance(error, commands.MissingPermissions):
-            await ctx.reply("❌%20You%20don't%20have%20permission.", delete_after=8)
+            await ctx.reply("❌ You don't have permission.", delete_after=8)
             return
         if isinstance(error, commands.BotMissingPermissions):
-            await ctx.reply(f"❌!20I%20need:%20{', '.join(error.missing_permissions)}", delete_after=10)
+            await ctx.reply(f"❌ I need: {', '.join(error.missing_permissions)}", delete_after=10)
             return
 
         # Log unexpected errors
-        logger.error(f"Command%20error%20in%20{ctx.command}:%20{error}")
-        await ctx.reply(f"❌%20An%20error%20occurred:%20`{error}`", delete_after=10)
+        logger.error(f"Command error in {ctx.command}: {error}")
+        try:
+            await ctx.reply(f"An error occurred: `{error}`", delete_after=10)
+        except Exception:
+            try:
+                await ctx.send(f"An error occurred: `{error}`", delete_after=10)
+            except Exception:
+                pass
 
     async def on_guild_join(self, guild: discord.Guild):
         """Re-apply saved name style when joining a guild."""

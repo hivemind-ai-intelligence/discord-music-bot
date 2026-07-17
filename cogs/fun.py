@@ -33,7 +33,7 @@ class Fun(commands.Cog):
                     if resp.status == 200:
                         data = await resp.json()
                         embed = discord.Embed(
-                            title=f"{Emojis.JOKE} Random Joke",
+                            title=f"Random Joke",
                             description=f"**{data['setup']}**\n\n||{data['punchline']}||",
                             color=0xFEE75C,
                         )
@@ -58,7 +58,7 @@ class Fun(commands.Cog):
 
         setup, punchline = random.choice(jokes)
         embed = discord.Embed(
-            title=f"{Emojis.JOKE} Random Joke",
+            title=f"Random Joke",
             description=f"**{setup}**\n\n||{punchline}||",
             color=0xFEE75C,
         )
@@ -89,7 +89,7 @@ class Fun(commands.Cog):
         except Exception:
             pass
 
-        await ctx.reply(f"{Emojis.ERROR} Couldn't fetch a meme right now. Try again!", delete_after=10)
+        await ctx.reply(f"Couldn't fetch a meme right now. Try again!", delete_after=10)
 
     # ── /8ball ───────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ class Fun(commands.Cog):
         """Ask the magic 8ball a yes/no question."""
         response = random.choice(self.EIGHTBALL_RESPONSES)
         embed = discord.Embed(
-            title=f"{Emojis.EIGHTBALL} Magic 8Ball",
+            title=f"Magic 8Ball",
             description=f"**Question:** {question}\n**Answer:** {response}",
             color=0x2B2D31,
         )
@@ -124,7 +124,7 @@ class Fun(commands.Cog):
         result = random.choice(["Heads", "Tails"])
         emoji = "🪙"
         embed = discord.Embed(
-            title=f"{Emojis.COIN} Coin Flip",
+            title=f"Coin Flip",
             description=f"🪙 The coin lands on... **{result}**!",
             color=0xFEE75C if result == "Heads" else 0x5865F2,
         )
@@ -137,12 +137,12 @@ class Fun(commands.Cog):
     async def roll(self, ctx: commands.Context, sides: int = 6):
         """Roll a dice with specified number of sides (default 6)."""
         if sides < 2 or sides > 100:
-            await ctx.reply(f"{Emojis.ERROR} Choose between 2 and 100 sides.", delete_after=10)
+            await ctx.reply(f"Choose between 2 and 100 sides.", delete_after=10)
             return
 
         result = random.randint(1, sides)
         embed = discord.Embed(
-            title=f"{Emojis.DICE} Dice Roll (d{sides})",
+            title=f"Dice Roll (d{sides})",
             description=f"🎲 You rolled: **{result}**",
             color=0x57F287,
         )
@@ -190,7 +190,7 @@ class Fun(commands.Cog):
     async def rps(self, ctx: commands.Context):
         """Play Rock Paper Scissors against the bot."""
         embed = discord.Embed(
-            title=f"{Emojis.RPS} Rock Paper Scissors",
+            title=f"Rock Paper Scissors",
             description="Choose your move!",
             color=0x5865F2,
         )
@@ -225,7 +225,7 @@ class Fun(commands.Cog):
             color = 0xED4245
 
         embed = discord.Embed(
-            title=f"{Emojis.RPS} Rock Paper Scissors",
+            title=f"Rock Paper Scissors",
             description=f"{ctx.author.mention}: {user_emoji} **vs** {bot_emoji} :Bot\n\n{result}",
             color=color,
         )

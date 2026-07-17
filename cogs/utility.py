@@ -25,7 +25,7 @@ class Utility(commands.Cog):
         target = user or ctx.author
 
         embed = discord.Embed(
-            title=f"{Emojis.AVATAR} {target.display_name}'s Avatar",
+            title=f"{target.display_name}'s Avatar",
             color=target.accent_color if hasattr(target, 'accent_color') and target.accent_color else 0x5865F2,
             url=target.display_avatar.url if target.display_avatar else None,
         )
@@ -68,13 +68,13 @@ class Utility(commands.Cog):
             accent_color = getattr(target, 'accent_color', None)
             if accent_color:
                 embed = discord.Embed(
-                    title=f"{Emojis.BANNER} {target.display_name}'s Banner",
+                    title=f"{target.display_name}'s Banner",
                     description=f"No banner set. Accent color: `{accent_color}`",
                     color=accent_color,
                 )
             else:
                 embed = discord.Embed(
-                    title=f"{Emojis.BANNER} {target.display_name}'s Banner",
+                    title=f"{target.display_name}'s Banner",
                     description="No banner set.",
                     color=0x2B2D31,
                 )
@@ -83,7 +83,7 @@ class Utility(commands.Cog):
             return
 
         embed = discord.Embed(
-            title=f"{Emojis.BANNER} {target.display_name}'s Banner",
+            title=f"{target.display_name}'s Banner",
             color=getattr(target, 'accent_color', None) or 0x5865F2,
         )
 
@@ -115,7 +115,7 @@ class Utility(commands.Cog):
         roles_count = len(guild.roles)
 
         embed = discord.Embed(
-            title=f"{Emojis.SERVER} {guild.name}",
+            title=f"{guild.name}",
             color=0x5865F2,
         )
 
@@ -159,7 +159,7 @@ class Utility(commands.Cog):
         joined_at = int(target.joined_at.timestamp()) if target.joined_at else None
 
         embed = discord.Embed(
-            title=f"{Emojis.USER} {target.display_name}",
+            title=f"{target.display_name}",
             color=target.color if target.color.value else 0x5865F2,
         )
 
@@ -246,7 +246,7 @@ class Utility(commands.Cog):
                     pass
         else:
             await ctx.reply(
-                f"{Emojis.ERROR} Please provide a custom emoji (e.g., `:emoji:`).",
+                f"Please provide a custom emoji (e.g., `:emoji:`).",
                 delete_after=10,
             )
             return
@@ -256,7 +256,7 @@ class Utility(commands.Cog):
             emoji_url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}"
 
             embed = discord.Embed(
-                title=f"{Emojis.EMOJI} Emoji: {emoji_name}",
+                title=f"Emoji: {emoji_name}",
                 color=0x5865F2,
             )
             embed.set_thumbnail(url=emoji_url)
